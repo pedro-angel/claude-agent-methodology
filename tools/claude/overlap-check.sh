@@ -12,13 +12,14 @@ CFG=$HOME/.claude
 CROOT=$HOME/.methodology-consumer
 LOG=$CROOT/.methodology-bootcheck.log
 TIER=$CFG/skills/claude-agent-methodology
+tier_name=$(basename "$TIER")
 [ -f "$TIER/.skillset" ] || exit 0
 tier_slugs=$(cat "$TIER/.skillset")
 
 others=""
 for e in "$CFG"/skills/*; do
   [ -e "$e" ] || continue
-  [ "$(basename "$e")" = agent-methodology ] && continue
+  [ "$(basename "$e")" = "$tier_name" ] && continue
   [ -f "$e/SKILL.md" ] && others="$others $(basename "$e")"
   if [ -d "$e/skills" ]; then
     for s in "$e"/skills/*/; do [ -d "$s" ] && others="$others $(basename "$s")"; done
