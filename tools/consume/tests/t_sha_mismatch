@@ -1,0 +1,21 @@
+#!/bin/sh
+# AC-3c DENY (mutation-verified): bump refuses when the resolved SHA != intended,
+# and that compare is load-bearing (neutering it lets the wrong commit through).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v1=$2; v2=$3
+sym="$p/cur"; mat="$p/mat"
+
+rc=$(BUMP_ASSUME_YES=1 run_rc sh "$B" "$p" "$v2" "$v1" "$mat" "$sym")
+awk '{ if ($0 ~ /!= intended/) sub(/\|\| die "[^"]*"/, "|| :"); print }' "$B" >"$p/mut.sh"
+sh -n "$p/mut.sh" || { scrub "$p"; fail "mutant not valid shell"; }
+cp "$TOOLS/materialize.sh" "$p/materialize.sh"   # the mutant resolves materialize.sh beside itself
+rcm=$(BUMP_ASSUME_YES=1 run_rc sh "$p/mut.sh" "$p" "$v2" "$v1" "$mat.m" "$sym.m")
+scrub "$p"
+
+[ "$rc" -ne 0 ]  || fail "bump did not refuse a SHA mismatch (rc=$rc)"
+[ "$rcm" -eq 0 ] || fail "neutered mismatch guard still failed — not exercising it (rcm=$rcm)"
+pass "t_sha_mismatch (refused: rc=$rc; load-bearing: rcm=$rcm)"

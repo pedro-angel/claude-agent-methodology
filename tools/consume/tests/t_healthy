@@ -1,0 +1,32 @@
+#!/bin/sh
+# AC-4 healthy path: a REAL materialization boot-checks GREEN — exit 0, a
+# METHODOLOGY OK line, and NO (MISSING|PARTIAL) token on either stream. Also a
+# skill-less tier → OK, 0 skills. Regression guard for byte-parity between
+# bootcheck's and materialize.sh's .skillset derivation (a drift would false-PARTIAL).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+BC="$TOOLS/bootcheck.sh"
+
+check_ok() {  # <pack-dir> <sha> <expected-skill-count>
+  root=$(mktemp -d); ef=$(mktemp)
+  "$TOOLS/materialize.sh" "$1" "$2" "$root/agent-methodology" >/dev/null 2>&1 \
+    || { scrub "$root"; rm -f "$ef"; fail "materialize failed"; }
+  out=$("$BC" "$root" agent-methodology 2>"$ef"); rc=$?
+  err=$(cat "$ef"); scrub "$root"; rm -f "$ef"
+  [ "$rc" -eq 0 ] || fail "healthy boot-check failed (rc=$rc): $out | $err"
+  printf '%s\n' "$out" | grep -qE "^METHODOLOGY OK .* $3 skill" || fail "OK line wrong (want $3 skills): $out"
+  printf '%s%s\n' "$out" "$err" | grep -qE '(MISSING|PARTIAL)' && fail "healthy tier emitted a fault token"
+}
+
+p=$(mk_pack alpha beta gamma) || fail "mk_pack"
+check_ok "$p" "$(git -C "$p" rev-parse HEAD)" 3
+scrub "$p"
+
+# skill-less tier (no skills/) → OK, 0 skills
+p2=$(mktemp -d)
+( cd "$p2" && git init -q && git config user.email a@b.c && git config user.name t \
+  && printf x >README.md && git add -A && git commit -qm v1 ) >/dev/null 2>&1
+check_ok "$p2" "$(git -C "$p2" rev-parse HEAD)" 0
+scrub "$p2"
+
+pass "t_healthy (real tier: OK/no-token; skill-less tier: OK 0 skills)"

@@ -1,0 +1,33 @@
+#!/bin/sh
+# Consumer-side exclusion (property test): MAT_EXCLUDE_SKILLS omits the named
+# slugs from the materialization, .skillset derives from what REMAINS (so the
+# boot check stays green), and .excluded records the choice — sorted, read-only,
+# machine-written. The export minus a recorded subset, never a silent one.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+M="$TOOLS/materialize.sh"
+p=$(mk_pack alpha beta gamma) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+out="$p/mat"
+
+if ! MAT_EXCLUDE_SKILLS="gamma beta" "$M" "$p" "$sha" "$out" >/dev/null 2>&1; then
+  scrub "$p"; fail "materialize with exclusions failed on a good sha"
+fi
+
+[ -d "$out/skills/alpha" ]   || { scrub "$p"; fail "kept skill missing"; }
+[ ! -e "$out/skills/beta" ]  || { scrub "$p"; fail "excluded skill beta still present"; }
+[ ! -e "$out/skills/gamma" ] || { scrub "$p"; fail "excluded skill gamma still present"; }
+
+[ "$(cat "$out/.skillset")" = "alpha" ] \
+  || { scrub "$p"; fail ".skillset not derived from remaining dirs: $(tr '\n' ' ' <"$out/.skillset")"; }
+[ "$(tr '\n' ' ' <"$out/.excluded")" = "beta gamma " ] \
+  || { scrub "$p"; fail ".excluded wrong or unsorted: $(tr '\n' ' ' <"$out/.excluded")"; }
+
+if [ "$(id -u)" != 0 ]; then
+  if ( echo x >>"$out/.excluded" ) 2>/dev/null; then
+    scrub "$p"; fail ".excluded is writable — the record can be silently edited"
+  fi
+fi
+
+scrub "$p"
+pass "t_exclude_materializes_subset"

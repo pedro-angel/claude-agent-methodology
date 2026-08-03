@@ -1,0 +1,35 @@
+#!/bin/sh
+# AC-9 / REQ-10: the no-marketplace scan passes on a clean tree and FAILS on each forbidden
+# artifact — a marketplace.json, a *.sig, a .claude-plugin manifest with a "marketplace" key
+# (DESIGN's pinned literal), and a signing-key manifest. Each case runs in a FRESH scratch git
+# repo (the scan reads that repo's index via git ls-files). POSIX sh, zero deps.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+SCAN="$TOOLS/check-no-marketplace-artifacts.sh"
+[ -f "$SCAN" ] || fail "scan not found at $SCAN"
+
+# scan_with <plant-cmd> — fresh repo with the plant applied + staged; prints the scan's rc.
+scan_with() {
+  d=$(mktemp -d)
+  mkdir -p "$d/tools/consume"
+  cp "$SCAN" "$d/tools/consume/check-no-marketplace-artifacts.sh"
+  ( cd "$d" && git init -q && git config user.email a@b.c && git config user.name t \
+    && mkdir -p skills/a && printf x >skills/a/SKILL.md ) >/dev/null 2>&1
+  ( cd "$d" && sh -c "$1" && git add -A ) >/dev/null 2>&1
+  rc=$(run_rc sh "$d/tools/consume/check-no-marketplace-artifacts.sh")
+  scrub "$d"
+  printf '%s\n' "$rc"
+}
+
+rc_clean=$(scan_with ':')
+rc_mkt=$(scan_with 'printf "{}" > marketplace.json')
+rc_sig=$(scan_with 'printf "x" > release.tar.sig')
+rc_mktkey=$(scan_with 'mkdir -p .claude-plugin && printf "{\"marketplace\": {}}" > .claude-plugin/plugin.json')
+rc_signkey=$(scan_with 'mkdir -p .claude-plugin && printf "{\"signing\": \"x\"}" > .claude-plugin/plugin.json')
+
+[ "$rc_clean" -eq 0 ]   || fail "scan failed on a clean tree (rc=$rc_clean)"
+[ "$rc_mkt" -ne 0 ]     || fail "scan did NOT reject a marketplace.json (rc=$rc_mkt)"
+[ "$rc_sig" -ne 0 ]     || fail "scan did NOT reject a *.sig file (rc=$rc_sig)"
+[ "$rc_mktkey" -ne 0 ]  || fail "scan did NOT reject a .claude-plugin marketplace-key manifest (rc=$rc_mktkey)"
+[ "$rc_signkey" -ne 0 ] || fail "scan did NOT reject a signing-key manifest (rc=$rc_signkey)"
+pass "t_no_marketplace_scan (clean passes; marketplace.json / *.sig / marketplace-key / signing-key rejected)"

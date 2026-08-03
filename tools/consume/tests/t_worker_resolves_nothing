@@ -1,0 +1,30 @@
+#!/bin/sh
+# AC-5 negative (REQ-4b/REQ-6): the worker path RESOLVES NOTHING of its own. Two
+# assertions:
+#   static  — install-consumer.sh contains no rev-parse / fetch / ls-remote (it
+#             hands a fixed pin to bump; the single resolve+verify lives in bump).
+#   dynamic — fed a non-SHA ref (HEAD) where an exact SHA is required, provisioning
+#             is REFUSED. A worker must be GIVEN its pin. When a JSON tool is present
+#             the run reaches bump, so we also confirm the refusal is bump's
+#             resolved!=intended; without one it is refused earlier (still a refusal).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+IC="$TOOLS/install-consumer.sh"
+[ -f "$IC" ] || fail "install-consumer.sh not found at $IC (a missing SUT must not pass vacuously)"
+
+# static: no ref resolver of any common form appears in the worker entry point's CODE
+# (strip comment-only lines so a future comment mentioning one can't false-fail this)
+grep -vE '^[[:space:]]*#' "$IC" | grep -Eq 'rev-parse|rev-list|show-ref|for-each-ref|fetch|ls-remote' \
+  && fail "install-consumer.sh resolves refs itself — a worker must be GIVEN its SHA"
+
+p=$(mk_pack alpha) || fail "mk_pack"
+# dynamic: a non-SHA ref (HEAD) where an exact SHA is required must be refused, and the
+# refusal must be bump's resolved!=intended (not some unrelated non-zero exit).
+err=$(BUMP_ASSUME_YES=1 sh "$IC" "$p" HEAD "$p/cr" "$p/cf" 2>&1 >/dev/null); rc=$?
+scrub "$p"
+[ "$rc" -ne 0 ] || fail "a worker fed a non-SHA ref (HEAD) was NOT refused (rc=$rc) — it must require an exact pin"
+if { command -v jq >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; }; then
+  printf '%s' "$err" | grep -q '!= intended' \
+    || fail "refusal was not bump's ref-mismatch (rc=$rc); stderr: $err"
+fi
+pass "t_worker_resolves_nothing (no self-resolution; non-SHA ref refused, rc=$rc)"

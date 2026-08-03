@@ -1,0 +1,24 @@
+#!/bin/sh
+# AC-4 DENY (mutation-verified): the boot check reports MISSING (token last, on
+# stderr, non-zero) for an absent/dangling tier; without the MISSING guard the
+# MISSING signal is not produced.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+BC="$TOOLS/bootcheck.sh"
+root=$(mktemp -d)   # no <root>/agent-methodology at all
+
+ef=$(mktemp)
+so=$(sh "$BC" "$root" agent-methodology 2>"$ef") && true
+rc=$?
+se=$(cat "$ef")
+mut="$root/bcmut.sh"
+awk '{ if ($0 ~ /does not resolve/) sub(/\|\| fail "[^"]*" MISSING/, "|| :"); print }' "$BC" >"$mut"
+sh -n "$mut" || { rm -f "$ef"; scrub "$root"; fail "mutant not valid shell"; }
+mse=$(sh "$mut" "$root" agent-methodology 2>&1 1>/dev/null) && true
+rm -f "$ef"; scrub "$root"
+
+[ "$rc" -ne 0 ] || fail "boot check did not fail on an absent tier (rc=$rc)"
+printf '%s\n' "$se" | grep -qE '^METHODOLOGY .* MISSING$' || fail "normal did not emit MISSING on stderr: $se"
+printf '%s\n' "$so" | grep -qE '(MISSING|PARTIAL)' && fail "a fault token leaked to stdout: $so"
+printf '%s\n' "$mse" | grep -qE '^METHODOLOGY .* MISSING$' && fail "neutered MISSING guard still emitted MISSING"
+pass "t_missing (MISSING on stderr, not stdout; guard load-bearing)"

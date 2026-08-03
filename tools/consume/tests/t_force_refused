@@ -1,0 +1,23 @@
+#!/bin/sh
+# AC-3c DENY (mutation-verified): --force is refused anywhere in argv, and the
+# refusal is load-bearing.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v1=$2
+sym="$p/cur"; mat="$p/mat"
+
+# --force passed as a trailing arg (not the <remote> slot, which now rejects
+# option-looking values) so the test isolates the --force loop, not the sanitizer.
+rc=$(BUMP_ASSUME_YES=1 run_rc sh "$B" "$p" "$v1" "$v1" "$mat" "$sym" "" --force)
+awk '{ if ($0 ~ /= "--force"/) sub(/&& die "[^"]*"/, "\\&\\& :"); print }' "$B" >"$p/mut.sh"
+sh -n "$p/mut.sh" || { scrub "$p"; fail "mutant not valid shell"; }
+cp "$TOOLS/materialize.sh" "$p/materialize.sh"   # the mutant resolves materialize.sh beside itself
+rcm=$(BUMP_ASSUME_YES=1 run_rc sh "$p/mut.sh" "$p" "$v1" "$v1" "$mat.m" "$sym.m" "" --force)
+scrub "$p"
+
+[ "$rc" -ne 0 ]  || fail "bump did not refuse --force (rc=$rc)"
+[ "$rcm" -eq 0 ] || fail "neutered --force guard still failed — not exercising it (rcm=$rcm)"
+pass "t_force_refused (refused: rc=$rc; load-bearing: rcm=$rcm)"

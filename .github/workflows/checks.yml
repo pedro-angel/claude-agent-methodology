@@ -1,0 +1,54 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege: these checks only read the repo — no write scope on GITHUB_TOKEN,
+# which matters on a public repo where anyone can open a PR that triggers this workflow.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so a rapid push sequence doesn't pile up CI.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+# Re-runs the IDENTICAL .pre-commit-config.yaml, so local hooks and CI cannot drift.
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Actions are pinned to full commit SHAs (with the tag in a comment) so a moved
+      # tag can't change what runs. Dependabot (.github/dependabot.yml) proposes bumps.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0          # full history so the commit-msg range below works
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # Runs `pre-commit run --all-files` on the same config (pre-commit/pre-commit stage).
+      # This installs pre-commit into the setup-python environment; later steps reuse it.
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+      # `--all-files` does not exercise commit-msg hooks, so lint each commit in the PR range.
+      - name: commit-msg checks (PR range)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          pre-commit --version
+          # --no-merges: on pull_request events HEAD is GitHub's synthetic merge commit
+          # ("Merge <sha> into <sha>"), which carries no conventional prefix or trailer —
+          # without this every human PR fails the gate on a commit nobody authored.
+          for sha in $(git rev-list --no-merges "$BASE_SHA"..HEAD); do
+            # Skip bot commits (e.g. Dependabot): they carry a conventional prefix but no
+            # provenance trailer, and are trusted, machine-generated changes.
+            author_email=$(git log -1 --format=%ae "$sha")
+            case "$author_email" in
+              *"[bot]"*|*dependabot*) continue ;;
+            esac
+            git log -1 --format=%B "$sha" > /tmp/commit-msg
+            pre-commit run --hook-stage commit-msg --commit-msg-filename /tmp/commit-msg --all-files
+          done

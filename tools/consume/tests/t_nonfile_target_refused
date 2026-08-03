@@ -1,0 +1,38 @@
+#!/bin/sh
+# Security/robustness hygiene (Copilot review, PR #25): provisioning REFUSES a
+# pre-existing NON-regular-file at an install-owned target (croot/bootcheck.sh,
+# cfg/settings.json) — a SYMLINK (writing through it could clobber an unrelated file)
+# or a DIRECTORY (cp would copy INTO it and the `[ -x ]` wiring assert would still pass,
+# reporting a broken hook as success). It fails loud before any write, and a symlink's
+# target is left intact. (Broader untrusted-env tamper-resistance is the consumer's
+# structural boundary per SPECS; this is the local write-target guard.)
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+IC="$TOOLS/install-consumer.sh"
+[ -f "$IC" ] || fail "install-consumer.sh not found at $IC (a missing SUT must not pass vacuously)"
+# Without a JSON tool, install-consumer refuses at the JSON-tool precondition BEFORE the
+# non-file target guard, so an rc!=0 here would not prove the guard fired — skip instead.
+{ command -v jq >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; } \
+  || { pass "t_nonfile_target_refused (SKIPPED: no JSON tool — guard is unreachable before the precondition)"; exit 0; }
+p=$(mk_pack alpha) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+
+# a SYMLINK at each target must be refused, and its target file left untouched
+for tgt in croot cfg; do
+  croot="$p/scr_$tgt"; cfg="$p/scf_$tgt"; mkdir -p "$croot" "$cfg/skills"
+  sentinel="$p/SECRET_$tgt"; printf important >"$sentinel"
+  case $tgt in croot) ln -s "$sentinel" "$croot/bootcheck.sh" ;; cfg) ln -s "$sentinel" "$cfg/settings.json" ;; esac
+  rc=$(BUMP_ASSUME_YES=1 run_rc sh "$IC" "$p" "$sha" "$croot" "$cfg")
+  [ "$rc" -ne 0 ] || { scrub "$p"; fail "symlink@$tgt: provisioning did NOT refuse (rc=$rc)"; }
+  [ "$(cat "$sentinel")" = important ] || { scrub "$p"; fail "symlink@$tgt: the symlink target was CLOBBERED"; }
+done
+
+# a DIRECTORY at each target must be refused (else cp-into-dir + a false-green assert)
+for tgt in croot cfg; do
+  croot="$p/dcr_$tgt"; cfg="$p/dcf_$tgt"; mkdir -p "$croot" "$cfg/skills"
+  case $tgt in croot) mkdir -p "$croot/bootcheck.sh" ;; cfg) mkdir -p "$cfg/settings.json" ;; esac
+  rc=$(BUMP_ASSUME_YES=1 run_rc sh "$IC" "$p" "$sha" "$croot" "$cfg")
+  [ "$rc" -ne 0 ] || { scrub "$p"; fail "dir@$tgt: provisioning did NOT refuse a directory target (rc=$rc)"; }
+done
+scrub "$p"
+pass "t_nonfile_target_refused (symlink + directory at both targets refused; symlink target intact)"

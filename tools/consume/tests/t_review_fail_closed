@@ -1,0 +1,27 @@
+#!/bin/sh
+# SECURITY: the exec-content review must fail CLOSED when the previous-pin base
+# does not resolve (a dangling/foreign symlink, or a GC'd/shallow base — the
+# disposable fresh-clone-worker topology). It must still fire on an exec-changing
+# bump and NOT silently ship it. Regression guard for the fail-open BLOCKER
+# (git-diff error was swallowed by `2>/dev/null || true`, skipping the review).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v3=$4
+sym="$p/cur"; mat="$p/mat"; mkdir -p "$mat"
+
+ln -sfn /tmp/deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$sym"   # unresolvable base
+rc=$(printf 'n\n' | { sh "$B" "$p" "$v3" "$v3" "$mat" "$sym" >/dev/null 2>&1; echo $?; })
+shipped=no; [ "$(basename "$(readlink "$sym")")" = "$v3" ] && shipped=yes
+# With the base unresolvable AND auto-approve, the review still fires (full review
+# vs the empty tree) and the bump proceeds — proving the base fell back, not skipped.
+ln -sfn /tmp/deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$sym"
+rc_yes=$(BUMP_ASSUME_YES=1 run_rc sh "$B" "$p" "$v3" "$v3" "$mat" "$sym")
+scrub "$p"
+
+[ "$rc" -ne 0 ]     || fail "review did not fire on an unresolvable base — FAILED OPEN (rc=$rc)"
+[ "$shipped" = no ] || fail "a declined bump still shipped the exec-content change"
+[ "$rc_yes" -eq 0 ] || fail "auto-approved bump on an unresolvable base failed (rc=$rc_yes)"
+pass "t_review_fail_closed (unresolvable base: declined→abort rc=$rc, not shipped; auto-approve proceeds)"

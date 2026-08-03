@@ -1,0 +1,21 @@
+#!/bin/sh
+# Additive default-off: with MAT_EXCLUDE_SKILLS unset OR empty, materialize
+# behaves exactly as before the feature existed — every skill present, full
+# .skillset, and NO .excluded marker (its absence is the "nothing excluded"
+# signal; an empty marker would read as a choice that was never made).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+M="$TOOLS/materialize.sh"
+p=$(mk_pack alpha beta) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+
+"$M" "$p" "$sha" "$p/m1" >/dev/null 2>&1 || { scrub "$p"; fail "plain materialize failed"; }
+[ -d "$p/m1/skills/alpha" ] && [ -d "$p/m1/skills/beta" ] || { scrub "$p"; fail "skills missing without exclusion"; }
+[ "$(tr '\n' ' ' <"$p/m1/.skillset")" = "alpha beta " ] || { scrub "$p"; fail ".skillset wrong without exclusion"; }
+[ ! -e "$p/m1/.excluded" ] || { scrub "$p"; fail ".excluded present with feature unset"; }
+
+MAT_EXCLUDE_SKILLS="" "$M" "$p" "$sha" "$p/m2" >/dev/null 2>&1 || { scrub "$p"; fail "empty-var materialize failed"; }
+[ ! -e "$p/m2/.excluded" ] || { scrub "$p"; fail ".excluded present with feature empty"; }
+
+scrub "$p"
+pass "t_exclude_default_off"

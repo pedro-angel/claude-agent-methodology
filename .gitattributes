@@ -1,0 +1,12 @@
+# Normalize line endings on commit; check out LF everywhere so the POSIX-sh
+# validators stay runnable on Windows clones too.
+* text=auto eol=lf
+
+# Shell scripts must always be LF (a CRLF shebang line breaks execution).
+*.sh text eol=lf
+
+# Treat markdown and yaml as text.
+*.md   text
+*.yml  text
+*.yaml text
+*.mdc  text

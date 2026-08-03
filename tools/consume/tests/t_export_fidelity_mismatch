@@ -1,0 +1,34 @@
+#!/bin/sh
+# AC-2 DENY path, mutation-verified (grounded-verifiable-gates r10): a truncated
+# / failed extraction fails loud, AND the tar-extract exit guard is load-bearing
+# (neutering it lets the bad export through). Both mutants are asserted to be
+# valid shell (`sh -n`) so a syntax-error can't masquerade as a passing rc.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+
+mat="$TOOLS/materialize.sh"
+p=$(mk_pack alpha) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+
+# mutant-A: truncate the tar after archive (guard intact — tar -x must fail loud).
+# Anchor on the real command (`--format=tar`), NOT the word "git archive" which
+# also appears in comments where $tar is undefined (that leaked a ".t" in cwd).
+awk '{print} /--format=tar/{print "head -c 40 \"$tar\" > \"$tar.t\" && mv \"$tar.t\" \"$tar\""}' \
+  "$mat" >"$p/mutA.sh"
+# mutant-B: same truncation AND neuter the extract die (`|| die ...` -> `|| :`),
+# so the failed extraction is swallowed and a bad export is published.
+awk '{ if ($0 ~ /tar extract failed/) sub(/\|\| die "[^"]*"/, "|| :"); print; if (/--format=tar/) print "head -c 40 \"$tar\" > \"$tar.t\" && mv \"$tar.t\" \"$tar\"" }' \
+  "$mat" >"$p/mutB.sh"
+
+sh -n "$p/mutA.sh" || { scrub "$p"; fail "mutant-A is not valid shell"; }
+sh -n "$p/mutB.sh" || { scrub "$p"; fail "mutant-B is not valid shell"; }
+
+rcA=$(run_rc sh "$p/mutA.sh" "$p" "$sha" "$p/a")
+rcB=$(run_rc sh "$p/mutB.sh" "$p" "$sha" "$p/b")
+produced_b=no; [ -e "$p/b" ] && produced_b=yes
+scrub "$p"
+
+[ "$rcA" -ne 0 ]     || fail "extract guard did NOT fail on a truncated tar (rcA=$rcA)"
+[ "$rcB" -eq 0 ]     || fail "neutered guard still failed — the test is not exercising it (rcB=$rcB)"
+[ "$produced_b" = yes ] || fail "neutered mutant did not actually publish a bad export"
+pass "t_export_fidelity_mismatch (truncation caught: rcA=$rcA; load-bearing: rcB=$rcB, bad-export-published=$produced_b)"

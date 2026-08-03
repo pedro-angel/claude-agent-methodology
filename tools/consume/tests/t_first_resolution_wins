@@ -1,0 +1,28 @@
+#!/bin/sh
+# AC-3c: the ref is resolved ONCE — bump materializes the resolved commit, moving
+# the tag afterward does not change it, and the materialize target uses the
+# once-resolved $got (verified structurally: exactly one rev-parse of the ref).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v1=$2; v2=$3
+git -C "$p" tag mtag "$v1" >/dev/null 2>&1
+sym="$p/cur"; mat="$p/mat"
+
+BUMP_ASSUME_YES=1 sh "$B" "$p" mtag "$v1" "$mat" "$sym" >/dev/null 2>&1
+at_v1=no; [ "$(basename "$(readlink "$sym")")" = "$v1" ] && at_v1=yes
+git -C "$p" tag -f mtag "$v2" >/dev/null 2>&1        # move the tag AFTER the bump
+inert=no; { [ -e "$mat/$v1" ] && [ ! -e "$mat/$v2" ]; } && inert=yes
+scrub "$p"
+
+# shellcheck disable=SC2016  # grepping bump.sh for these LITERAL strings is intentional
+grep -q 'target="$matroot/$got"' "$B" || fail "materialize target does not use the once-resolved \$got"
+# the REF is resolved exactly once (the base-validation resolves \$old_sha, not \$ref)
+# shellcheck disable=SC2016  # literal grep of bump.sh's source, intentional
+n=$(grep -c 'rev-parse --verify --quiet "${ref}' "$B")
+[ "$at_v1" = yes ] || fail "bump did not materialize the resolved commit"
+[ "$inert" = yes ] || fail "the materialization changed / a moved tag leaked in"
+[ "$n" -eq 1 ]     || fail "the ref is resolved more than once (count = $n)"
+pass "t_first_resolution_wins (materialized intended: $at_v1; tag-move-inert: $inert; single resolve: $n)"

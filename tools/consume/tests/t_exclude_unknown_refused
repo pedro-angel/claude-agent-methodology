@@ -1,0 +1,27 @@
+#!/bin/sh
+# DENY (mutation-verified): materialize refuses an exclusion slug that is absent
+# from the export — a typo must not silently ship the very skill it meant to
+# exclude — and refuses a malformed (non-kebab) slug. The existence guard is
+# load-bearing: a neutered mutant lets the unknown slug pass.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+M="$TOOLS/materialize.sh"
+p=$(mk_pack alpha beta) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+
+rc=$(MAT_EXCLUDE_SKILLS="nope" run_rc "$M" "$p" "$sha" "$p/m1")
+[ "$rc" -ne 0 ] || { scrub "$p"; fail "unknown exclusion slug accepted (rc=$rc)"; }
+[ ! -e "$p/m1" ] || { scrub "$p"; fail "partial out-dir left after unknown-slug refusal"; }
+
+rcbad=$(MAT_EXCLUDE_SKILLS="../alpha" run_rc "$M" "$p" "$sha" "$p/m2")
+[ "$rcbad" -ne 0 ] || { scrub "$p"; fail "malformed exclusion slug accepted (rc=$rcbad)"; }
+[ ! -e "$p/m2" ] || { scrub "$p"; fail "partial out-dir left after malformed-slug refusal"; }
+
+# Mutation: neuter the existence guard; the mutant must then accept 'nope'.
+awk '{ if ($0 ~ /not in export/) sub(/\|\| die "[^"]*"/, "|| :"); print }' "$M" >"$p/mut.sh"
+sh -n "$p/mut.sh" || { scrub "$p"; fail "mutant not valid shell"; }
+rcm=$(MAT_EXCLUDE_SKILLS="nope" run_rc sh "$p/mut.sh" "$p" "$sha" "$p/m3")
+scrub "$p"
+
+[ "$rcm" -eq 0 ] || fail "neutered existence guard still failed — not exercising it (rcm=$rcm)"
+pass "t_exclude_unknown_refused (unknown rc=$rc, malformed rc=$rcbad; load-bearing rcm=$rcm)"

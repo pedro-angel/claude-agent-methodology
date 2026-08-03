@@ -1,0 +1,23 @@
+# Secrets — structurally un-committable (see skills/secrets-and-teardown-discipline).
+# A secret should be physically unable to enter a commit; force-allow only templates.
+.env
+.env.*
+!.env.example
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+*.pem
+*.key
+*.p12
+id_rsa
+id_ed25519
+credentials.json
+service-account*.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Dependencies / build output
+node_modules/

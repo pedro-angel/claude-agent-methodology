@@ -1,0 +1,34 @@
+#!/bin/sh
+# AC-3b: a bump whose executable content (hooks) changes is gated on the operator
+# confirm — declined aborts with the symlink unchanged, confirmed proceeds; a
+# doc-only bump does not prompt (works with empty stdin).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v2=$3; v3=$4; v4=$5
+sym="$p/cur"; mat="$p/mat"
+
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v2" "$v2" "$mat" "$sym" >/dev/null 2>&1   # pin v2 (no hooks)
+rc_no=$(printf 'n\n' | { sh "$B" "$p" "$v3" "$v3" "$mat" "$sym" >/dev/null 2>&1; echo $?; })
+at_no=$(basename "$(readlink "$sym")")
+printf 'y\n' | sh "$B" "$p" "$v3" "$v3" "$mat" "$sym" >/dev/null 2>&1
+at_yes=$(basename "$(readlink "$sym")")
+rc_docs=$(printf '' | { sh "$B" "$p" "$v4" "$v4" "$mat" "$sym" >/dev/null 2>&1; echo $?; })
+at_docs=$(basename "$(readlink "$sym")")
+# FIRST bump (fresh consumer, base = empty tree) to a pin that HAS exec content
+# (v3's hook) must prompt — a declined first bump aborts, nothing published.
+sym2="$p/cur2"; mat2="$p/mat2"
+rc_first=$(printf 'n\n' | { sh "$B" "$p" "$v3" "$v3" "$mat2" "$sym2" >/dev/null 2>&1; echo $?; })
+first_published=$([ -L "$sym2" ] && echo yes || echo no)
+scrub "$p"
+
+[ "$rc_no" -ne 0 ]   || fail "declined exec-content bump did not abort (rc=$rc_no)"
+[ "$rc_first" -ne 0 ] || fail "declined FIRST bump (empty-tree base) with exec content did not abort (rc=$rc_first)"
+[ "$first_published" = no ] || fail "declined first bump still published a symlink"
+[ "$at_no" = "$v2" ] || fail "declined bump changed the symlink (now $at_no, want v2)"
+[ "$at_yes" = "$v3" ] || fail "confirmed bump did not proceed (now $at_yes)"
+[ "$rc_docs" -eq 0 ] || fail "doc-only bump prompted / failed on empty stdin (rc=$rc_docs)"
+[ "$at_docs" = "$v4" ] || fail "doc-only bump did not proceed (now $at_docs)"
+pass "t_diff_review (declined→abort@v2, confirmed→v3, doc-only→v4 no-prompt)"

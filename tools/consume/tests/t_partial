@@ -1,0 +1,28 @@
+#!/bin/sh
+# AC-4 DENY (mutation-verified): the boot check reports PARTIAL when .skillset
+# does not match the actual skills/*/ dirs; without the comparison guard it passes.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+BC="$TOOLS/bootcheck.sh"
+root=$(mktemp -d)
+# hand-build a materialization whose .skillset lists beta but skills/ has only alpha
+d="$root/agent-methodology"
+mkdir -p "$d/skills/alpha"
+printf 'x' >"$d/skills/alpha/SKILL.md"
+printf 'alpha\nbeta\n' >"$d/.skillset"
+
+ef=$(mktemp)
+so=$(sh "$BC" "$root" agent-methodology 2>"$ef") && true
+rc=$?
+se=$(cat "$ef")
+mut="$root/bcmut.sh"
+awk '{ if ($0 ~ /does not match/) sub(/\|\| fail "[^"]*" PARTIAL/, "|| :"); print }' "$BC" >"$mut"
+sh -n "$mut" || { rm -f "$ef"; scrub "$root"; fail "mutant not valid shell"; }
+rcm=$(sh "$mut" "$root" agent-methodology >/dev/null 2>&1; echo $?)
+rm -f "$ef"; scrub "$root"
+
+[ "$rc" -ne 0 ] || fail "boot check did not fail on a partial tier (rc=$rc)"
+printf '%s\n' "$se" | grep -qE '^METHODOLOGY .* PARTIAL$' || fail "normal did not emit PARTIAL on stderr: $se"
+printf '%s\n' "$so" | grep -qE '(MISSING|PARTIAL)' && fail "a fault token leaked to stdout: $so"
+[ "$rcm" -eq 0 ] || fail "neutered comparison still failed — not exercising the guard (rcm=$rcm)"
+pass "t_partial (PARTIAL on stderr, not stdout; guard load-bearing: mutant rc=$rcm)"

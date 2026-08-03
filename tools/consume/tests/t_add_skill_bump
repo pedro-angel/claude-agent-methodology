@@ -1,0 +1,22 @@
+#!/bin/sh
+# AC-1 (2nd clause): a bump to a SHA that adds a skill surfaces it (in .skillset)
+# with NO new symlink — the same one is re-pointed.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v2=$3; v4=$5
+sym="$p/cur"; mat="$p/mat"
+
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v2" "$v2" "$mat" "$sym" >/dev/null 2>&1
+before=$(tr '\n' ' ' <"$sym/.skillset")
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v4" "$v4" "$mat" "$sym" >/dev/null 2>&1
+after=$(tr '\n' ' ' <"$sym/.skillset")
+links=$(find "$(dirname "$sym")" -maxdepth 1 -type l | wc -l | tr -d ' ')
+scrub "$p"
+
+[ "$before" = "alpha " ]      || fail "before .skillset wrong: '$before'"
+[ "$after" = "alpha beta " ]  || fail "added skill not surfaced in .skillset: '$after'"
+[ "$links" = 1 ]              || fail "expected exactly one symlink, found $links"
+pass "t_add_skill_bump (.skillset '$before' -> '$after'; one symlink)"

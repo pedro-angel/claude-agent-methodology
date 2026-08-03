@@ -1,0 +1,32 @@
+#!/bin/sh
+# AC-2: a materialization has no .git, denies writes (append AND new-file), keeps
+# content stable, and carries a .skillset. (Property test — not a deny path.)
+# Write-denial is skipped under root (root ignores the a-w bits).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+
+p=$(mk_pack alpha beta) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+out="$p/mat"
+
+if ! "$TOOLS/materialize.sh" "$p" "$sha" "$out" >/dev/null 2>&1; then
+  scrub "$p"; fail "materialize failed on a good sha"
+fi
+[ ! -e "$out/.git" ] || { scrub "$p"; fail "materialization contains .git"; }
+[ -f "$out/.skillset" ] || { scrub "$p"; fail ".skillset missing"; }
+
+if [ "$(id -u)" = 0 ]; then
+  scrub "$p"; pass "t_readonly_export (write-denial checks skipped under root)"; exit 0
+fi
+before=$(git -C "$p" hash-object "$out/skills/alpha/SKILL.md")
+if ( echo x >>"$out/skills/alpha/SKILL.md" ) 2>/dev/null; then
+  scrub "$p"; fail "an append to the read-only export succeeded"
+fi
+after=$(git -C "$p" hash-object "$out/skills/alpha/SKILL.md")
+[ "$before" = "$after" ] || { scrub "$p"; fail "content changed after a write attempt"; }
+if ( : >"$out/skills/newfile" ) 2>/dev/null; then
+  scrub "$p"; fail "creating a new file in the read-only export succeeded"
+fi
+
+scrub "$p"
+pass "t_readonly_export"

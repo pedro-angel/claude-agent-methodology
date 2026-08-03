@@ -1,0 +1,22 @@
+#!/bin/sh
+# AC-3: a bump to a new pin changes the loaded content; a consumer still on the
+# old pin's materialization is unchanged.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v1=$2; v2=$3
+sym="$p/cur"; mat="$p/mat"
+
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v1" "$v1" "$mat" "$sym" >/dev/null 2>&1
+c1=$(cat "$sym/skills/alpha/SKILL.md")
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v2" "$v2" "$mat" "$sym" >/dev/null 2>&1
+c2=$(cat "$sym/skills/alpha/SKILL.md")
+oldstill=$(cat "$mat/$v1/skills/alpha/SKILL.md")
+scrub "$p"
+
+[ "$c1" = ONE ]      || fail "v1 content wrong: $c1"
+[ "$c2" = TWO ]      || fail "bump did not change loaded content: $c2"
+[ "$oldstill" = ONE ] || fail "old-pin materialization changed: $oldstill"
+pass "t_bump_content (v1=$c1 -> v2=$c2; old pin intact=$oldstill)"

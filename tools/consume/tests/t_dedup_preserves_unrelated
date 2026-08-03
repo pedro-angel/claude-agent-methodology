@@ -1,0 +1,28 @@
+#!/bin/sh
+# Copilot review (PR #25): the settings.json dedup + wiring assert match the SPECIFIC
+# installed hook path ($croot/bootcheck.sh), not a generic "bootcheck.sh" substring. So
+# an UNRELATED user hook that merely mentions some other bootcheck.sh SURVIVES provisioning
+# (no collateral deletion), and re-provisioning the same consumer leaves exactly ONE of our
+# hooks (idempotent, no duplicate). Assertions are zero-dep grep; only the SUT needs a JSON tool.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+IC="$TOOLS/install-consumer.sh"
+[ -f "$IC" ] || fail "install-consumer.sh not found at $IC"
+{ command -v jq >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; } \
+  || { pass "t_dedup_preserves_unrelated (SKIPPED: no JSON tool)"; exit 0; }
+p=$(mk_pack alpha) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+croot="$p/croot"; cfg="$p/cfg"; mkdir -p "$croot" "$cfg/skills"
+# an unrelated user hook whose command mentions a DIFFERENT bootcheck.sh
+printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"/other/bootcheck.sh --user"}]}]}}' >"$cfg/settings.json"
+
+BUMP_ASSUME_YES=1 sh "$IC" "$p" "$sha" "$croot" "$cfg" >/dev/null 2>&1 || { scrub "$p"; fail "provision failed"; }
+BUMP_ASSUME_YES=1 sh "$IC" "$p" "$sha" "$croot" "$cfg" >/dev/null 2>&1 || { scrub "$p"; fail "re-provision failed"; }
+s="$cfg/settings.json"
+ours=$(grep -cF "$croot/bootcheck.sh" "$s")   # POSIX (no grep -o); settings.json is pretty-printed, 1 hook/line
+unrelated=no; grep -qF '/other/bootcheck.sh --user' "$s" && unrelated=yes
+scrub "$p"
+
+[ "$unrelated" = yes ] || fail "an unrelated /other/bootcheck.sh user hook was deleted (generic-substring collateral)"
+[ "$ours" -eq 1 ]      || fail "re-provision left $ours of our hooks (want exactly 1 — dedup should be idempotent)"
+pass "t_dedup_preserves_unrelated (unrelated hook survives; exactly one of ours after re-provision)"

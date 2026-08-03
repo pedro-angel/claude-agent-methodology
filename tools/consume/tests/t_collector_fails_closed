@@ -1,0 +1,48 @@
+#!/bin/sh
+# AC-9 meta-test for the deny-path collector, using passing/failing STUBS for each EXPECTED
+# member (exercises the collector's LOGIC directly, not the real jq-dependent deny tests):
+#   * the enumerated set is the documented 10 (a silent grow/shrink reddens here);
+#   * all members present + passing -> GREEN;
+#   * a PRESENT but FAILING member -> RED (the collector runs each test, propagates non-zero);
+#   * a MISSING member -> RED (fail-closed-on-missing).
+# Zero-dep.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+COLLECTOR="$TOOLS/check-consume-deny-paths.sh"
+[ -f "$COLLECTOR" ] || fail "collector not found at $COLLECTOR"
+members=$(grep '^EXPECTED=' "$COLLECTOR" | sed 's/^EXPECTED="//; s/"$//')
+[ -n "$members" ] || fail "could not parse EXPECTED from the collector"
+
+count=0
+for m in $members; do count=$((count + 1)); done
+[ "$count" -eq 10 ] || fail "enumerated deny-path set is $count members, expected 10 (SPECS AC-9 / DESIGN) — reconcile all three"
+
+# Machine-enforce the reconciliation: SPECS AC-9 + DESIGN must MIRROR the collector's
+# EXPECTED (the source of truth) — catches a silent SUBSTITUTION (drop one, add another;
+# count stays 10) as well as a shrink/grow, in any of the three.
+repo=$(cd "$TOOLS/../.." && pwd)
+tok() { tr -cs 'A-Za-z0-9_' '\n' | grep -E '^t_[a-z_]+$' | sort -u | tr '\n' ' '; }   # POSIX (no grep -o)
+want=$(echo "$members" | tok)
+if [ -f "$repo/design-chain/packaging-and-consumption/SPECS.md" ]; then
+spec=$(sed -n '/enumerated deny-path set/,/}/p' "$repo/design-chain/packaging-and-consumption/SPECS.md" | tok)
+dsgn=$(sed -n '/filenames \*\*equal\*\* the enumerated tokens/,/\*\*Mutation/p' "$repo/design-chain/packaging-and-consumption/DESIGN.md" | tok)
+[ "$want" = "$spec" ] || fail "SPECS AC-9 enumeration != collector EXPECTED — reconcile (SPECS:[$spec] EXPECTED:[$want])"
+[ "$want" = "$dsgn" ] || fail "DESIGN enumeration != collector EXPECTED — reconcile (DESIGN:[$dsgn] EXPECTED:[$want])"
+fi
+
+d=$(mktemp -d)
+mkdir -p "$d/tests"
+cp "$COLLECTOR" "$d/check.sh"
+for m in $members; do printf '#!/bin/sh\nexit 0\n' >"$d/tests/$m"; done   # each member "passes"
+rc_full=$(run_rc sh "$d/check.sh")
+first=${members%% *}
+printf '#!/bin/sh\nexit 1\n' >"$d/tests/$first"                          # present but FAILING
+rc_fail=$(run_rc sh "$d/check.sh")
+rm -f "$d/tests/$first"                                                   # MISSING
+rc_drop=$(run_rc sh "$d/check.sh")
+scrub "$d"
+
+[ "$rc_full" -eq 0 ] || fail "collector rejected all-present passing stubs (rc=$rc_full)"
+[ "$rc_fail" -ne 0 ] || fail "collector did NOT redden when member '$first' FAILED (rc=$rc_fail)"
+[ "$rc_drop" -ne 0 ] || fail "collector did NOT fail-closed when member '$first' was removed (rc=$rc_drop)"
+pass "t_collector_fails_closed (10 members; docs mirror checked where present; all-pass green; failing + removed members redden)"

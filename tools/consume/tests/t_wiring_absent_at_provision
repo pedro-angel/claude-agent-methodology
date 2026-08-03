@@ -1,0 +1,39 @@
+#!/bin/sh
+# AC-4b DENY (mutation-verified): a provision that fails to register the
+# SessionStart boot-check hook FAILS at provision time — the wiring assert is
+# what enforces it. Neutering only the hook-write reddens the provision; ALSO
+# neutering the assert lets an unwired consumer provision silently (proving the
+# assert, not luck, does the work). P13 established the hook fires every session.
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+# A deny-path member must never pass vacuously: without a JSON tool the guard can't
+# be exercised, so this goes RED (the collector reddens) rather than SKIP-green.
+{ command -v jq >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; } \
+  || fail "t_wiring_absent_at_provision needs a JSON tool (jq or python3) to verify the deny signal"
+IC="$TOOLS/install-consumer.sh"
+p=$(mk_pack alpha) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+# the mutant resolves its siblings from its own dir ($here) — provide them
+cp "$TOOLS/bump.sh" "$TOOLS/materialize.sh" "$TOOLS/bootcheck.sh" "$p/" || { scrub "$p"; fail "cp siblings"; }
+
+# mutant-A: skip writing the merged hook into settings.json. The wiring assert must catch it.
+# (Whitespace-tolerant so a harmless re-indent of the mv line doesn't silently break the
+# mutation; the cmp canary makes any pattern drift a LOUD, specific failure.)
+awk '/^[[:space:]]*mv "\$tmp" "\$settings"/ { print ": # mutant: skip hook write"; next } { print }' "$IC" >"$p/mutA.sh"
+cmp -s "$p/mutA.sh" "$IC" && { scrub "$p"; fail "mutation matched nothing — the 'mv \$tmp \$settings' line in install-consumer.sh changed; update the awk"; }
+sh -n "$p/mutA.sh" || { scrub "$p"; fail "mutant-A is not valid POSIX sh"; }
+rcA=$(BUMP_ASSUME_YES=1 run_rc sh "$p/mutA.sh" "$p" "$sha" "$p/crA" "$p/cfA")
+
+# mutant-B (control): skip the hook write AND neuter the assert -> provisions UNWIRED.
+awk '/^[[:space:]]*mv "\$tmp" "\$settings"/ { print ": # mutant: skip hook write"; next }
+     /SessionStart boot-check hook not registered/ { sub(/\|\| die "[^"]*"/, "|| :") } { print }' "$IC" >"$p/mutB.sh"
+sh -n "$p/mutB.sh" || { scrub "$p"; fail "mutant-B is not valid POSIX sh"; }
+rcB=$(BUMP_ASSUME_YES=1 run_rc sh "$p/mutB.sh" "$p" "$sha" "$p/crB" "$p/cfB")
+# zero-dep check (works whichever JSON tool the merge used): the control provisions UNWIRED
+wiredB=no; grep -q 'bootcheck.sh' "$p/cfB/settings.json" 2>/dev/null && wiredB=yes
+scrub "$p"
+
+[ "$rcA" -ne 0 ]     || fail "provision without the boot-check hook did NOT fail — assert not load-bearing (rc=$rcA)"
+[ "$rcB" -eq 0 ]     || fail "control: assert-neutered mutant should still provision (rc=$rcB)"
+[ "$wiredB" = no ]   || fail "control mutant unexpectedly registered a hook — mutation ineffective"
+pass "t_wiring_absent_at_provision (unwired provision fails rc=$rcA; assert-neutered provisions unwired, 0 hooks)"

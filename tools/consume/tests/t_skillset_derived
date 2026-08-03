@@ -1,0 +1,21 @@
+#!/bin/sh
+# AC-4c: .skillset equals the export's OWN skills/*/ basenames (machine-derived,
+# sorted), and no hand-maintained *.skillset is tracked in the repo. (Property.)
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+
+p=$(mk_pack gamma alpha beta) || fail "mk_pack"   # unsorted input on purpose
+sha=$(git -C "$p" rev-parse HEAD)
+out="$p/mat"
+"$TOOLS/materialize.sh" "$p" "$sha" "$out" >/dev/null 2>&1 || { scrub "$p"; fail "materialize failed"; }
+got=$(tr '\n' ' ' <"$out/.skillset")
+expected=$(printf '%s\n' alpha beta gamma | tr '\n' ' ')
+scrub "$p"
+[ "$got" = "$expected" ] || fail ".skillset is not the sorted derived set: '$got'"
+
+# repo-wide: a tracked *.skillset would re-introduce the hand-maintained drift surface
+repo=$(cd "$(dirname "$0")/../../.." && pwd)
+if git -C "$repo" ls-files '*.skillset' | grep -q .; then
+  fail "a *.skillset list is tracked in the repo (must be produced, never committed)"
+fi
+pass "t_skillset_derived"

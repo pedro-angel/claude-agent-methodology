@@ -1,0 +1,102 @@
+# .pre-commit-config.yaml — claude-agent-methodology
+#
+# Setup:  pre-commit install --install-hooks
+# CI re-runs THIS SAME FILE (.github/workflows/checks.yml), so local and CI cannot drift.
+# Every external `rev:` is pinned to an immutable tag.
+
+default_install_hook_types: [pre-commit, commit-msg]
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  # ---- generic file hygiene -------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-case-conflict          # skill-slug directory names are case-load-bearing
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: detect-private-key
+
+  # ---- generic markdown style ----------------------------------------------
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.2
+    hooks:
+      - id: markdownlint-cli2
+
+  # ---- conventional-commit TYPE PREFIX (commit-msg stage) -------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, chore, refactor, test, build, ci, perf, style, revert]
+
+  # ---- shell lint over the tooling ------------------------------------------
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        files: ^tools/(consume|claude)/(.+\.sh|tests/t_[A-Za-z0-9_]+)$
+        types: [file]
+
+  # ---- PROJECT-INVARIANT VALIDATORS ----------------------------------------
+  - repo: local
+    hooks:
+      - id: check-skill-frontmatter
+        name: "every SKILL.md has name==slug, 'Use when' description, Enforcement section"
+        language: script
+        entry: scripts/checks/check-skill-frontmatter.sh
+        files: ^skills/.*/SKILL\.md$
+        pass_filenames: false
+      - id: check-readme-index
+        name: "README skill-index == skills/ dirs"
+        language: script
+        entry: scripts/checks/check-readme-index.sh
+        files: ^(README\.md|skills/)
+        pass_filenames: false
+      - id: check-crosslinks-resolve
+        name: "every ../<slug>/SKILL.md cross-link resolves"
+        language: script
+        entry: scripts/checks/check-crosslinks-resolve.sh
+        files: ^skills/.*\.md$
+        pass_filenames: false
+      - id: check-one-pin-per-action
+        name: "every Action is SHA-pinned, one pin per action repo-wide"
+        language: script
+        entry: scripts/checks/check-one-pin-per-action.sh
+        pass_filenames: false
+      - id: check-no-private-identifiers
+        name: "no private identifier (hostname, internal name) enters the repo"
+        language: script
+        entry: scripts/checks/check-no-private-identifiers.sh
+        pass_filenames: false
+      # ---- CONSUMPTION-TOOLCHAIN GATE ----------------------------------------
+      - id: check-consume-deny-paths
+        name: "consumption deny-path gate: enumerated set complete + each passes (fail-closed)"
+        language: script
+        entry: tools/consume/check-consume-deny-paths.sh
+        files: ^tools/consume/
+        pass_filenames: false
+      - id: run-consume-tests
+        name: "consumption toolchain: positive test suite passes"
+        language: script
+        entry: tools/consume/run-consume-tests.sh
+        files: ^tools/consume/
+        pass_filenames: false
+      - id: check-no-marketplace-artifacts
+        name: "no marketplace/signing artifacts"
+        language: script
+        entry: tools/consume/check-no-marketplace-artifacts.sh
+        files: ^tools/consume/
+        pass_filenames: false
+      - id: check-commit-trailer
+        name: "commit body carries a provenance trailer"
+        language: script
+        entry: scripts/checks/check-commit-trailer.sh
+        stages: [commit-msg]

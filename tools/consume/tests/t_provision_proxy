@@ -1,0 +1,37 @@
+#!/bin/sh
+# AC-5 (proxy): install-consumer works across three invocation shapes on one host —
+# an interactive config, a LOCAL-CLONE worker (its own separate checkout as the
+# source), and a config rooted under a distinct $HOME — all from the SAME operator
+# SHA. Each must boot-check GREEN independently, and (REQ-6) the SUT must honor the
+# caller-provided distinct roots without cross-contamination — the caller guarantees
+# per-consumer uniqueness; this asserts the SUT respects it (guards a regression to a
+# hardcoded shared mat root), it does not auto-derive uniqueness. The worker installs
+# the given SHA and resolves nothing (see t_worker_resolves_nothing).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+{ command -v jq >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; } \
+  || { pass "t_provision_proxy (SKIPPED: no JSON tool for the settings.json merge)"; exit 0; }
+IC="$TOOLS/install-consumer.sh"
+BC="$TOOLS/bootcheck.sh"
+p=$(mk_pack alpha beta) || fail "mk_pack"
+sha=$(git -C "$p" rev-parse HEAD)
+cl=$(mktemp -d)                                   # the worker's own local clone (separate checkout)
+git clone -q "$p" "$cl/pack" 2>/dev/null || { scrub "$p" "$cl"; fail "local clone failed"; }
+homeC=$(mktemp -d)                                # a distinct $HOME standing in for another UID
+
+BUMP_ASSUME_YES=1 sh "$IC" "$p"        "$sha" "$p/rootA"          "$p/cfgA"        >/dev/null 2>&1 || { scrub "$p" "$cl" "$homeC"; fail "provision A (interactive) failed"; }
+BUMP_ASSUME_YES=1 sh "$IC" "$cl/pack"  "$sha" "$p/rootB"          "$p/cfgB"        >/dev/null 2>&1 || { scrub "$p" "$cl" "$homeC"; fail "provision B (local-clone worker) failed"; }
+BUMP_ASSUME_YES=1 HOME="$homeC" sh "$IC" "$p" "$sha" "$homeC/.methodology" "$homeC/.claude" >/dev/null 2>&1 || { scrub "$p" "$cl" "$homeC"; fail "provision C (distinct-\$HOME) failed"; }
+
+gA=$(run_rc sh "$BC" "$p/cfgA/skills" claude-agent-methodology)
+gB=$(run_rc sh "$BC" "$p/cfgB/skills" claude-agent-methodology)
+gC=$(run_rc sh "$BC" "$homeC/.claude/skills" claude-agent-methodology)
+ra=$(readlink "$p/cfgA/skills/claude-agent-methodology")
+rb=$(readlink "$p/cfgB/skills/claude-agent-methodology")
+rc=$(readlink "$homeC/.claude/skills/claude-agent-methodology")
+scrub "$p" "$cl" "$homeC"
+
+{ [ "$gA" -eq 0 ] && [ "$gB" -eq 0 ] && [ "$gC" -eq 0 ]; } || fail "a consumer did not boot-check green (A=$gA B=$gB C=$gC)"
+{ [ -n "$ra" ] && [ "$ra" != "$rb" ] && [ "$rb" != "$rc" ] && [ "$ra" != "$rc" ]; } \
+  || fail "consumers collided on a materialization root (A=$ra B=$rb C=$rc)"
+pass "t_provision_proxy (interactive + local-clone worker + distinct-\$HOME; all green, distinct roots)"

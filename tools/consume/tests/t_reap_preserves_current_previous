@@ -1,0 +1,28 @@
+#!/bin/sh
+# REQ-4c / AC-6b DENY (mutation-verified): the reap keeps the PREVIOUS
+# materialization (the rollback target), and that keep-previous guard is
+# load-bearing (dropping it reaps the previous).
+# shellcheck source=./_lib.sh disable=SC1091
+. "$(dirname "$0")/_lib.sh"
+B="$TOOLS/bump.sh"
+# shellcheck disable=SC2046
+set -- $(mk_bump_pack)
+p=$1; v1=$2; v2=$3
+sym="$p/cur"; mat="$p/mat"
+
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v1" "$v1" "$mat" "$sym" >/dev/null 2>&1
+BUMP_ASSUME_YES=1 sh "$B" "$p" "$v2" "$v2" "$mat" "$sym" >/dev/null 2>&1
+kept_prev=no; [ -e "$mat/$v1" ] && kept_prev=yes
+
+awk '{ if ($0 ~ /"\$b" = "\$old_sha"/) next; print }' "$B" >"$p/mut.sh"
+sh -n "$p/mut.sh" || { scrub "$p"; fail "mutant not valid shell"; }
+cp "$TOOLS/materialize.sh" "$p/materialize.sh"   # the mutant resolves materialize.sh beside itself
+sym2="$p/cur2"; mat2="$p/mat2"
+BUMP_ASSUME_YES=1 sh "$p/mut.sh" "$p" "$v1" "$v1" "$mat2" "$sym2" >/dev/null 2>&1
+BUMP_ASSUME_YES=1 sh "$p/mut.sh" "$p" "$v2" "$v2" "$mat2" "$sym2" >/dev/null 2>&1
+mut_reaped=no; [ ! -e "$mat2/$v1" ] && mut_reaped=yes
+scrub "$p"
+
+[ "$kept_prev" = yes ]  || fail "reap removed the previous materialization (rollback target lost)"
+[ "$mut_reaped" = yes ] || fail "neutered keep-previous guard still kept it — not exercising the guard"
+pass "t_reap_preserves_current_previous (kept: $kept_prev; load-bearing: mutant-reaped=$mut_reaped)"
