@@ -83,8 +83,8 @@ Red-flag thoughts — if you catch yourself thinking any of these, STOP:
 Promises are minimums — a repo may hold its target to more (a coverage
 floor on `test`, a linkcheck inside `docs`), never to less: green must
 never mean less than the name promises. Three tiers, by how strongly a
-name is standardized (machine-readable list: `vocabulary.txt` beside this
-file):
+name is standardized (machine-readable list: the `vocabulary.txt` that
+travels with the conformance hook — see Enforcement):
 
 1. **Universal — every facade, identical promise.** `help` (default goal;
    lists every target), `setup` (bare clone → working toolchain:
@@ -243,10 +243,10 @@ path is provoked in acceptance — env file present but keyless must yield a
 hard failure, file absent must yield the skip. For the vocabulary, the
 machine checks names and composition — whether two repos' same-named
 targets keep the same *promise* is review's job, and the checker should
-not pretend otherwise. The canonical list is this skill's
-`vocabulary.txt` (tiers universal/family/prefix/banned, plus per-name
-capability and role columns); checkers consume that file, never a
-hand-copied list. Name checks run against the Makefile's real target
+not pretend otherwise. The canonical list is the `vocabulary.txt` that
+ships inside the conformance hook (tiers universal/family/prefix/banned,
+plus per-name capability and role columns); checkers consume that file,
+never a hand-copied list. Name checks run against the Makefile's real target
 namespace (`make -qp`'s database — parse the output and ignore the exit
 status, nonzero by design under a phony default goal), not the help text
 — an unannotated compatibility alias hides from help but not from the
@@ -278,10 +278,21 @@ make variables, *except* the strings rule 2 mirrors into a certifying
 gate: those stay literal, because that mirror is byte-level and greps
 the *leaf* recipes, where each command string lives once. A repo
 has adopted the vocabulary when the conformance check runs green in its
-own CI. The reference checker ships beside the manifest
-(`vocabulary-conformance.sh`, battle-tested by the first migration): it
-matches names literally, reads the real target database, and fails
-closed — a malformed manifest row is a hard error, never a silent skip.
+own CI. The checker is distributed as a **pinned pre-commit hook** —
+`vocabulary-conformance` from the git-controls repo — and the manifest
+travels inside it, so a consuming repo adds a `rev`, never a copy:
+
+```yaml
+  - repo: https://github.com/pedro-angel/git-controls-starter
+    rev: v1.5.0            # bump via autoupdate: a reviewable diff, not silent drift
+    hooks: [{id: vocabulary-conformance}]
+```
+
+Vendoring it is the anti-pattern, not the instruction: a copy freezes its
+parser off the sync path, and the pinned `rev` is what makes a gate change
+arrive as a reviewable bump with provenance. The checker matches names
+literally, reads the real target database, and fails closed — a malformed
+manifest row is a hard error, never a silent skip.
 Its limits are deliberate and stated: GNU make with the Makefile at the
 repo root; no target the checker expands may invoke make or carry `+`
 recipes (`$(MAKE)` and `+` lines execute under `-n`; a literal make
@@ -289,8 +300,10 @@ defeats the chatter filter — the guard covers every expanded target and
 one level into `check`, deeper recursion is the adopter's to prevent,
 and `-qp` already runs `$(shell)` at parse time); and rule 2's
 facade↔gate mirror loop is not its job — that stays a per-repo
-acceptance check. Consuming repos execute the vendored copy — a forked
-checker freezes its parser off the sync path.
+acceptance check. Capability detection is heuristic and deliberately
+incomplete: a stack the checker cannot see — no compose file, no compose
+template, no stack script — still falls to review rather than being
+declared absent.
 
 ## Related skills
 
