@@ -85,11 +85,11 @@ chmod +x "$HOME/.methodology-consumer/bump"
 
 ```sh
 # 1. the tier resolves with the expected skill count
-wc -l "$(readlink "$HOME/.claude/skills/claude-agent-methodology")/.skillset"   # 18
+wc -l "$(readlink "$HOME/.claude/skills/claude-agent-methodology")/.skillset"   # 19
 
 # 2. a real session fires the boot check
 claude -p "reply with exactly: ok" >/dev/null 2>&1 || true
-tail -1 "$HOME/.methodology-consumer/.methodology-bootcheck.log"   # METHODOLOGY OK — tier claude-agent-methodology, 18 skill(s)
+tail -1 "$HOME/.methodology-consumer/.methodology-bootcheck.log"   # METHODOLOGY OK — tier claude-agent-methodology, 19 skill(s)
 
 # 3. the rules reach a fresh session
 claude -p "Do not use tools. Does your context contain a section titled 'Reader-first communication'? Answer INHERITED or NOT PRESENT."

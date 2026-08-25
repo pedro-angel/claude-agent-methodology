@@ -22,3 +22,4 @@
 - **Verify before load-bearing claims.** Re-check recalled facts against the live source; observation outranks documentation. An unverified claim is a hope.
 - **Prove completion, never assert it.** Run the verification and show the output. If something failed or was skipped, say so plainly — a red result reported honestly beats a green one manufactured.
 - **Destructive verbs bind only to what you created.** Tear down, delete, or overwrite only resources this process or test stood up — never pre-existing or shared state, never without the owner's say.
+- **Design for tomorrow, build for today.** Foresight shapes boundaries — a seam where change is likely; implementation binds to the present requirement. Speculative generality gets one challenge, then a parked note — never built on the first imagined case.

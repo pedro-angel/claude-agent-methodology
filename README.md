@@ -3,7 +3,7 @@
 [![checks](https://github.com/pedro-angel/claude-agent-methodology/actions/workflows/checks.yml/badge.svg)](https://github.com/pedro-angel/claude-agent-methodology/actions/workflows/checks.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An engineering methodology for Claude Code agents: 18 skills for task-matched depth, a set of always-on rules for every reply, and tooling that makes consumption pinned, verified, and duplicate-free.
+An engineering methodology for Claude Code agents: 19 skills for task-matched depth, a set of always-on rules for every reply, and tooling that makes consumption pinned, verified, and duplicate-free.
 
 ## What's in the repo
 
@@ -34,6 +34,7 @@ This pack does not duplicate capabilities the superpowers and extended-superpowe
 | --- | --- |
 | [spec-driven-development](skills/spec-driven-development/SKILL.md) | Starting a non-trivial feature, or docs and code have drifted apart |
 | [decision-memory](skills/decision-memory/SKILL.md) | A decision would otherwise be re-derived from scratch next session |
+| [seams-over-speculation](skills/seams-over-speculation/SKILL.md) | A design or request generalizes beyond the present requirement |
 
 ### Structuring the system
 
