@@ -4,6 +4,8 @@ config:
   MD013: false   # line-length: prose and skill-index tables are intentionally hand-wrapped
   MD033: false   # inline HTML: docs use <slug>, <name>, <trigger> placeholders in prose
   MD041: false   # first-line-h1: every file opens with YAML frontmatter, not a heading
+  MD024:         # duplicate headings: CHANGELOG.md repeats 'Added'/'Removed' under each version (Keep a Changelog)
+    siblings_only: true
 # markdownlint targets *.md / *.markdown by default, so the Cursor .mdc is skipped here
 # (covered by check-adapters-no-stale-links.sh). .git is ignored by default.
 ignores:
