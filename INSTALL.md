@@ -98,9 +98,9 @@ claude -p "Do not use tools. Does your context contain a section titled 'Reader-
 If any check misses, stop and fix before relying on the install — the boot-check log's `MISSING`
 or `PARTIAL` token names the fault.
 
-## Step 6 — the machine guards (recommended)
+## Step 6 — the machine guard (recommended)
 
-Two session hooks, both fail-open — a broken guard never blocks your work.
+One session hook, fail-open — a broken guard never blocks your work.
 
 **Overlap guard** — warns inside the session if any skill here ever collides with another
 installed plugin's skill (exact, prefix, or token-similar name):
@@ -110,21 +110,11 @@ cp "$PACK/tools/claude/overlap-check.sh" "$HOME/.methodology-consumer/"
 chmod +x "$HOME/.methodology-consumer/overlap-check.sh"
 ```
 
-**Reply judge** — a Stop hook that checks every substantial reply against the always-on
-communication rules via a fast headless call, bouncing a violating reply back once for revision:
-
-```sh
-cp "$PACK/tools/claude/reply-judge.sh" "$PACK/tools/claude/reply-rubric.txt" "$HOME/.methodology-consumer/"
-chmod +x "$HOME/.methodology-consumer/reply-judge.sh"
-# off switch, any time:  touch ~/.methodology-consumer/judge-off
-```
-
-Register both in `~/.claude/settings.json` (append to the existing `hooks` object the provisioner
+Register it in `~/.claude/settings.json` (append to the existing `hooks` object the provisioner
 created):
 
 ```json
-"SessionStart": [ …existing…, { "hooks": [ { "type": "command", "command": "'$HOME/.methodology-consumer/overlap-check.sh'" } ] } ],
-"Stop":         [ { "hooks": [ { "type": "command", "command": "'$HOME/.methodology-consumer/reply-judge.sh'" } ] } ]
+"SessionStart": [ …existing…, { "hooks": [ { "type": "command", "command": "'$HOME/.methodology-consumer/overlap-check.sh'" } ] } ]
 ```
 
 ## Updating and rolling back
