@@ -11,7 +11,7 @@ An engineering methodology for Claude Code agents: 19 skills for task-matched de
 skills/                 One directory per skill; each SKILL.md carries rules, red flags, worked examples.
 rules/always-on.md      The rules that bind every turn — append them to your ~/.claude/CLAUDE.md.
 tools/consume/          Pinned consumption: materialize, bump, boot check, provisioner, tests.
-tools/claude/           Machine guards: a reply-quality Stop hook and a skill-overlap SessionStart check.
+tools/claude/           Machine guard: a skill-overlap SessionStart check.
 scripts/checks/         The validators CI runs on this repo.
 INSTALL.md              Step by step, from a bare user to a verified install.
 ```
