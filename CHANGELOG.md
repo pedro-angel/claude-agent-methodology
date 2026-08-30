@@ -5,6 +5,8 @@ versions are the git tags consumers pin (`TAG` + asserted commit).
 
 ## [Unreleased]
 
+## [v0.3.1] — 2026-08-30
+
 ### Removed
 
 - The reply judge (`tools/claude/reply-judge.sh`, `tools/claude/reply-rubric.txt`) and its
